@@ -1,8 +1,9 @@
 import GSheetReader from "g-sheets-api";
+import sphereKnn from "sphere-knn";
 
 export async function handler(event, context) {
   try {
-    const { location } = event.queryStringParameters
+    const { location, coords } = event.queryStringParameters
     console.log(location)
     const data = await new Promise((resolve, reject) => {
       GSheetReader(
@@ -15,7 +16,26 @@ export async function handler(event, context) {
           }
         },
         (results) => {
-          resolve(results);
+          if (coords != null) {
+            const [latitude, longitude] = coords.split(',')
+            const resultsWithCoords = results.map((provider) => {
+              return {
+                ...provider,
+                latitude: Number(provider.latitude),
+                longitude: Number(provider.longitude),
+              };
+            });
+            const geolookupData = sphereKnn(resultsWithCoords);
+            const geolocatedResults = geolookupData(
+              latitude,
+              longitude,
+              10,
+              15000
+            );
+            resolve(geolocatedResults)
+          } else {
+            resolve(results);
+          }
         },
         (error) => {
           reject(error);

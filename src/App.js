@@ -3,6 +3,7 @@ import L from "leaflet";
 import { Map, TileLayer, Marker } from "react-leaflet";
 import fetch from "node-fetch";
 import styled from "styled-components";
+import { geolocated } from "react-geolocated";
 
 import "./App.css";
 
@@ -38,6 +39,11 @@ const AddListingLink = styled.a`
   &:hover {
     background: #65de77;
   }
+`;
+
+const SettingsContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
 `;
 
 const ModeSelect = styled.div`
@@ -197,8 +203,9 @@ const ContributingFooter = styled.div`
 
 const DEFAULT_UK_MAP_PROPS = { coords: [55.378052, -3.435973], zoom: 6 };
 
-function App() {
+function App({ isGeolocationAvailable, isGeolocationEnabled, coords }) {
   const [mode, setMode] = useState("list");
+  const [resultsMode, setResultsMode] = useState("closest");
   const [data, setData] = useState([]);
 
   const [markers, setMarkers] = useState();
@@ -221,12 +228,17 @@ function App() {
 
   useEffect(() => {
     setSelectedIndex(null);
-    fetch(`.netlify/functions/providers?location=${selectedLocation}`)
+    let url = `.netlify/functions/providers?location=${selectedLocation}`;
+    if (isGeolocationAvailable) {
+      if (coords && resultsMode === "closest") {
+        url = `${url}&coords=${coords.latitude},${coords.longitude}`;
+      }
+    }
+    fetch(url)
       .then((response) => response.json())
       .then(async (data) => {
-        // eslint-disable-next-line no-unused-vars
         const [first, ...results] = data;
-        setData(selectedLocation === "All" ? results : [first, ...results]);
+        setData([first, ...results]);
         setMapProps(
           selectedLocation === "All"
             ? DEFAULT_UK_MAP_PROPS
@@ -234,16 +246,19 @@ function App() {
         );
         console.log(data);
 
-        if (!locations.length) {
           const locationSet = new Set();
           data.forEach((provider) => {
             locationSet.add(provider["provider town/city"]);
           });
           setLocations(["All", ...locationSet]);
-          console.log(locationSet);
-        }
       });
-  }, [selectedLocation, locations.length]);
+  }, [
+    selectedLocation,
+    locations.length,
+    coords,
+    isGeolocationAvailable,
+    resultsMode,
+  ]);
 
   useEffect(() => {
     (async () => {
@@ -287,9 +302,9 @@ function App() {
   };
 
   const handleModeChange = (mode) => {
-    setMode(mode)
-    setSelectedIndex(null)
-  }
+    setMode(mode);
+    setSelectedIndex(null);
+  };
 
   const buildAddressString = (provider) => {
     const ADDRESS_1 = provider["provider address 1"];
@@ -317,14 +332,36 @@ function App() {
           A collated list of venues offering free meals to UK school children
           during the half term holidays.{" "}
         </SubHeading>
-        <ModeSelect>
-          <Option isSelected={mode === "list"} onClick={() => handleModeChange("list")}>
-            List
-          </Option>
-          <Option isSelected={mode === "map"} onClick={() => handleModeChange("map")}>
-            Map
-          </Option>
-        </ModeSelect>
+        <SettingsContainer>
+          <ModeSelect>
+            <Option
+              isSelected={mode === "list"}
+              onClick={() => handleModeChange("list")}
+            >
+              List
+            </Option>
+            <Option
+              isSelected={mode === "map"}
+              onClick={() => handleModeChange("map")}
+            >
+              Map
+            </Option>
+          </ModeSelect>
+          <ModeSelect>
+            <Option
+              isSelected={resultsMode === 'closest'}
+              onClick={() => setResultsMode("closest")}
+              disabled={!isGeolocationEnabled}
+            >
+              Show results closed to me
+            </Option>
+            <Option
+              isSelected={resultsMode === 'all'}
+              onClick={() => setResultsMode("all")}>
+              Show all results
+            </Option>
+          </ModeSelect>
+        </SettingsContainer>
       </Header>
       <Container>
         <LocationFilter>
@@ -493,4 +530,9 @@ function App() {
   );
 }
 
-export default App;
+export default geolocated({
+  positionOptions: {
+    enableHighAccuracy: false,
+  },
+  userDecisionTimeout: 5000,
+})(App);
